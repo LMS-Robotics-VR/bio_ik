@@ -680,4 +680,92 @@ public:
         return sum;
     }
 };
+
+class MinLinkZDifferenceGoal : public Goal
+{
+    std::string link_name, link_name2;
+    double height_difference;
+    double weight;
+
+public:
+    MinLinkZDifferenceGoal() {
+        link_name = "";
+        link_name2 = "";
+        height_difference = 0;
+        weight = 1;
+    }
+    MinLinkZDifferenceGoal(const std::string& link_name, const std::string& link_name2, double weight = 1.0)
+        : link_name(link_name)
+        , link_name2(link_name2)
+        , weight(weight)
+    {
+    }
+    virtual void describe(GoalContext& context) const
+    {
+        Goal::describe(context);
+        context.addLink(link_name);
+        context.addLink(link_name2);
+    }
+    const static inline double map(double x, double in_min, double in_max, double out_min, double out_max) {
+        return (x - in_min) * (out_max - out_min) / (in_max - in_min) + out_min;
+    }
+    virtual double evaluate(const GoalContext& context) const
+    {
+        auto& fb = context.getLinkFrame(0);
+        auto& fb2 = context.getLinkFrame(1);
+        double link_length = fb.getPosition().distance(fb2.getPosition());
+        double dif = fabs(fb.getPosition().z() - fb2.getPosition().z());
+        // if dif > 0, then fb is higher than fb2
+        // if dif < 0, then fb2 is higher than fb
+        // if dif == 0, then fb and fb2 are at the same height
+        // we want the dif to be positive and ideally close to link_length
+        double penalty = MinLinkZDifferenceGoal::map(dif, 0, link_length, weight, 0);
+        return penalty;
+    }
+};
+
+class MaxLinkZDifferenceGoal : public Goal
+{
+    std::string link_name, link_name2;
+    double height_difference;
+    double weight;
+
+public:
+    MaxLinkZDifferenceGoal() {
+        link_name = "";
+        link_name2 = "";
+        height_difference = 0;
+        weight = 1;
+    }
+    MaxLinkZDifferenceGoal(const std::string& link_name, const std::string& link_name2, double weight = 1.0)
+        : link_name(link_name)
+        , link_name2(link_name2)
+        , weight(weight)
+    {
+    }
+    virtual void describe(GoalContext& context) const
+    {
+        Goal::describe(context);
+        context.addLink(link_name);
+        context.addLink(link_name2);
+    }
+    const static inline double map(double x, double in_min, double in_max, double out_min, double out_max) {
+        return (x - in_min) * (out_max - out_min) / (in_max - in_min) + out_min;
+    }
+    virtual double evaluate(const GoalContext& context) const
+    {
+        auto& fb = context.getLinkFrame(0);
+        auto& fb2 = context.getLinkFrame(1);
+        double link_length = fb.getPosition().distance(fb2.getPosition());
+        double dif = fabs(fb.getPosition().z() - fb2.getPosition().z());
+        // if dif > 0, then fb is higher than fb2
+        // if dif < 0, then fb2 is higher than fb
+        // if dif == 0, then fb and fb2 are at the same height
+        // we want the dif to be positive and ideally close to link_length
+        double penalty = MaxLinkZDifferenceGoal::map(dif, 0, link_length, 0, weight);
+        return penalty;
+    }
+};
+
+
 }

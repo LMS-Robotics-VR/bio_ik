@@ -734,7 +734,7 @@ public:
     LinkXYDifferenceGoal() {
         link_name = "";
         link_name2 = "";
-        min_difference_ = 10;
+        min_difference_ = 0.5;
     }
     LinkXYDifferenceGoal(const std::string& link_name, const std::string& link_name2, double min_difference, double weight = 1.0)
         : link_name(link_name)
@@ -755,6 +755,41 @@ public:
         auto& fb2 = context.getLinkFrame(1);
         double dif = sqrt(pow(fb.getPosition().x() - fb2.getPosition().x(), 2) + pow(fb.getPosition().y() - fb2.getPosition().y(), 2));
         double d = dif < min_difference_ ? weight_ : 0.0;
+        return d * d;
+    }
+};
+
+// Make a goal that tries to keep the difference between two links in the XY plane bigger than a certain value in meters
+class LinkXYMaxDifferenceGoal : public Goal
+{
+    std::string link_name, link_name2;
+    double max_difference_;
+
+public:
+    LinkXYMaxDifferenceGoal() {
+        link_name = "";
+        link_name2 = "";
+        max_difference_ = 1.0;
+    }
+    LinkXYMaxDifferenceGoal(const std::string& link_name, const std::string& link_name2, double max_difference, double weight = 1.0)
+        : link_name(link_name)
+        , link_name2(link_name2)
+        , max_difference_(max_difference)
+    {
+        weight_ = weight;
+    }
+    virtual void describe(GoalContext& context) const
+    {
+        Goal::describe(context);
+        context.addLink(link_name);
+        context.addLink(link_name2);
+    }
+    virtual double evaluate(const GoalContext& context) const
+    {
+        auto& fb = context.getLinkFrame(0);
+        auto& fb2 = context.getLinkFrame(1);
+        double dif = sqrt(pow(fb.getPosition().x() - fb2.getPosition().x(), 2) + pow(fb.getPosition().y() - fb2.getPosition().y(), 2));
+        double d = dif > max_difference_ ? weight_ : 0.0;
         return d * d;
     }
 };

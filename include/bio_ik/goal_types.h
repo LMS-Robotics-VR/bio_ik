@@ -43,6 +43,7 @@
 
 #include <moveit/collision_detection/collision_common.h>
 #include <moveit/collision_detection_fcl/collision_common.h>
+#include <moveit/kinematics_base/kinematics_base.h>
 
 #include <map>
 #include <unordered_set>
@@ -681,137 +682,38 @@ public:
     }
 };
 
-class LinkZDifferenceGoal : public Goal
+class IKCostFnGoal : public Goal
 {
-    std::string link_name, link_name2;
-    double min_difference_, max_difference_;
-    bool crop_;
-
+    const geometry_msgs::msg::Pose pose_;
+    const kinematics::KinematicsBase::IKCostFn function_;
+    const moveit::core::RobotModelConstPtr robot_model_;
 public:
-    LinkZDifferenceGoal() {
-        link_name = "";
-        link_name2 = "";
-        min_difference_ = 0;
-        max_difference_ = 10;
-        crop_ = true;
-    }
-    LinkZDifferenceGoal(const std::string& link_name, const std::string& link_name2, double min_difference, double max_difference, bool crop, double weight = 1.0)
-        : link_name(link_name)
-        , link_name2(link_name2)
-        , min_difference_(min_difference)
-        , max_difference_(max_difference)
-        , crop_(crop)
+    IKCostFnGoal(const geometry_msgs::msg::Pose& pose,  const kinematics::KinematicsBase::IKCostFn& function,
+                 const moveit::core::RobotModelConstPtr& robot_model, double weight = 1.0)
+        : Goal()
+        , pose_(pose)
+        , function_(function)
+        , robot_model_(robot_model)
     {
-        weight_ = weight;
+        setWeight(weight);
     }
-    virtual void describe(GoalContext& context) const
+    double evaluate(const GoalContext& context) const override
     {
-        Goal::describe(context);
-        context.addLink(link_name);
-        context.addLink(link_name2);
-    }
-    const static inline double map(double x, double in_min, double in_max, double out_min, double out_max) {
-        return (x - in_min) * (out_max - out_min) / (in_max - in_min) + out_min;
-    }
-    virtual double evaluate(const GoalContext& context) const
-    {
-        auto& fb = context.getLinkFrame(0);
-        auto& fb2 = context.getLinkFrame(1);
-        double dif = fabs(fb.getPosition().z() - fb2.getPosition().z());
-        double d = LinkZDifferenceGoal::map(dif, min_difference_, max_difference_, 0, 1);
-        if (crop_) { d = fmin(1, fmax(0, d)); }
-        return d * d;
-    }
-};
+        auto info = context.getRobotInfo();
+        moveit::core::RobotState robot_state(robot_model_);
+        auto jmg = context.getJointModelGroup();
 
-// Make a goal that tries to keep the difference between two links in the XY plane bigger than a certain value in meters
-class LinkXYDifferenceGoal : public Goal
-{
-    std::string link_name, link_name2;
-    double min_difference_;
-
-public:
-    LinkXYDifferenceGoal() {
-        link_name = "";
-        link_name2 = "";
-        min_difference_ = 0.5;
-    }
-    LinkXYDifferenceGoal(const std::string& link_name, const std::string& link_name2, double min_difference, double weight = 1.0)
-        : link_name(link_name)
-        , link_name2(link_name2)
-        , min_difference_(min_difference)
-    {
-        weight_ = weight;
-    }
-    virtual void describe(GoalContext& context) const
-    {
-        Goal::describe(context);
-        context.addLink(link_name);
-        context.addLink(link_name2);
-    }
-    virtual double evaluate(const GoalContext& context) const
-    {
-        auto& fb = context.getLinkFrame(0);
-        auto& fb2 = context.getLinkFrame(1);
-        double dif = sqrt(pow(fb.getPosition().x() - fb2.getPosition().x(), 2) + pow(fb.getPosition().y() - fb2.getPosition().y(), 2));
-        double d = dif < min_difference_ ? weight_ : 0.0;
-        return d * d;
-    }
-};
-
-// Make a goal that tries to keep the difference between two links in the XY plane bigger than a certain value in meters
-class LinkXYMaxDifferenceGoal : public Goal
-{
-    std::string link_name, link_name2;
-    double max_difference_;
-
-public:
-    LinkXYMaxDifferenceGoal() {
-        link_name = "";
-        link_name2 = "";
-        max_difference_ = 1.0;
-    }
-    LinkXYMaxDifferenceGoal(const std::string& link_name, const std::string& link_name2, double max_difference, double weight = 1.0)
-        : link_name(link_name)
-        , link_name2(link_name2)
-        , max_difference_(max_difference)
-    {
-        weight_ = weight;
-    }
-    virtual void describe(GoalContext& context) const
-    {
-        Goal::describe(context);
-        context.addLink(link_name);
-        context.addLink(link_name2);
-    }
-    virtual double evaluate(const GoalContext& context) const
-    {
-        auto& fb = context.getLinkFrame(0);
-        auto& fb2 = context.getLinkFrame(1);
-        double dif = sqrt(pow(fb.getPosition().x() - fb2.getPosition().x(), 2) + pow(fb.getPosition().y() - fb2.getPosition().y(), 2));
-        double d = dif > max_difference_ ? weight_ : 0.0;
-        return d * d;
-    }
-};
-
-class JointDistanceGoal : public Goal
-{
-public:
-    JointDistanceGoal(double weight = 1.0)
-    {
-        weight_ = weight;
-    }
-    virtual double evaluate(const GoalContext& context) const
-    {
-        double sum = 0.0;
-        for(size_t i = 0; i < context.getProblemVariableCount(); i++)
+        std::vector<double> seed_state(context.getProblemVariableCount());
+        std::vector<double> sol_positions(context.getProblemVariableCount());
+        for (size_t i = 0; i < context.getProblemVariableCount(); ++i)
         {
-            double d = context.getProblemVariablePosition(i) - context.getProblemVariableInitialGuess(i);
-            d *= context.getProblemVariableWeight(i);
-            sum += d * d;
+            sol_positions[i] = context.getProblemVariablePosition(i);
+            // robot_state.setVariablePosition(i, context.getProblemVariablePosition(i));
+            seed_state[i] = context.getProblemVariableInitialGuess(i);
         }
-        return sum;
+        robot_state.setJointGroupPositions(&jmg, sol_positions);
+        robot_state.update();
+        return function_(pose_, robot_state, &jmg, seed_state);
     }
 };
-
-} // namespace bio_ik
+}
